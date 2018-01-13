@@ -54,6 +54,7 @@ class Node {
 	// なんかの役にたつかもしれないのでノードごとに番号をふってます
 	private int number;
 	private boolean endFlag;
+	private Integer len;
 	
 	public Node(int number, List<Node> nodes) {
 		this.nodes = nodes;
@@ -66,6 +67,7 @@ class Node {
 	public void add(List<Integer> s, int i) {
 		if(i == s.size()){
 			this.endFlag = true;
+			len = s.size();
 			return;
 		}
 		Node next = nextNodes.get(s.get(i));
@@ -99,47 +101,206 @@ class Node {
 	public Node getNextNode(int character) {
 		return nextNodes.get(character);
 	}
+	
+	public int getLen() {
+		return this.len;
+	}
 }
 
 // ビームサーチのノード
 class BNode {
-	static final int height = 30;
-	static final int width = 30;
+	static final int height = 20;
+	static final int width = 20;
 	// このdx, dyで方向に番号をつける
 	// たとえば (-1, 0)方向は0
 	static final int dx[] = {-1, 0, 1, 0};
 	static final int dy[] = {0, -1, 0, 1};
+	static final int NONE = -1;
 	// boolean[x][y][方向の番号] ですでに使った辺を管理する
+	int x, y;
 	boolean[][][] usedFlag;
+	int[][] field;
+	int eval = 0;
 	
 	
-	public BNode() {
+	
+	public BNode(int[][] field, int x, int y) {
 		usedFlag = new boolean[height][width][4];
 		for(int i = 0; i < height; i++) {
 			for(int j = 0; j < width; j++) {
 				Arrays.fill(usedFlag[i][j], false);
 			}
 		}
+		this.eval = 0;
+		this.field = field;
+		this.x = x;
+		this.y = y;
 	}
 	
-	public BNode(boolean[][][] usedFlag) {
+	public BNode(int[][] field, int eval, int x, int y, boolean[][][] usedFlag) {
+		this.usedFlag = new boolean[height][width][4];
 		for(int i = 0; i < height; i++) {
 			for(int j = 0; j < width; j++) {
 				this.usedFlag[i][j] = usedFlag[i][j].clone();
 			}
 		}
+		this.eval = eval;
+		this.field = field;
+		this.x = x;
+		this.y = y;
+	}
+	
+	private boolean checkRange(int x, int y) {
+		return 0 <= x && x < height && 0 <= y && y < width;
+	}
+	
+	static final int ROOT = 100;
+	private int[][] bfs(boolean[][][] usedEdgeFlag, int x, int y) {
+		Queue<Point> qu = new ArrayDeque<Point>();
+		qu.add(new Point(x, y));
+		// 前にどの方向からきたのかをメモっておく
+		int[][] preDirection = new int[height][width];
+		for(int[] a : preDirection) {
+			Arrays.fill(a, NONE);
+		}
+		preDirection[x][y] = ROOT;
+		while(!qu.isEmpty()) {
+			Point currentPoint = qu.poll();
+			for(int k = 0; k < 4; k++) {
+				if(usedEdgeFlag[currentPoint.getX()][currentPoint.getY()][k]) {
+					continue;
+				}
+				
+				int nx = currentPoint.getX()+dx[k];
+				int ny = currentPoint.getY()+dy[k];
+				if(!checkRange(nx, ny) || preDirection[nx][ny] != NONE){
+					continue;
+				}
+				preDirection[nx][ny] = (k+2)%4;
+				if(field[nx][ny] == NONE) {
+					qu.add(new Point(nx, ny));
+				}
+			}
+		}
+		return preDirection;
+	}
+	
+	private List<BNode> enumerate(int x, int y, Node current, boolean[][][] usedEdgeFlag) {
+		// まずBFS
+		int[][] preDirection = bfs(usedEdgeFlag, x, y);
+		
+		// そして次のノードを決める
+		List<BNode> res = new ArrayList<BNode>();
+		if(current.isEnd()) {
+			int length = current.getLen();
+			res.add(new BNode(field, eval + length + length*length, x, y, usedFlag));
+		}
+		for(int i = 0; i < height; i++) {
+			for(int j = 0; j < width; j++) {
+				if(preDirection[i][j] == NONE || field[i][j] == NONE) continue;
+				Node next = current.getNextNode(field[i][j]);
+				if(next == null) continue;
+
+				int curi = i, curj = j;
+				while(preDirection[curi][curj] != ROOT) {
+					int dir = preDirection[curi][curj];
+					
+					assert(!usedEdgeFlag[curi][curj][dir]);
+					usedEdgeFlag[curi][curj][dir] = true;
+					assert(!usedEdgeFlag[curi+dx[dir]][curj+dy[dir]][(dir+2)%4]);
+					curi += dx[dir];
+					curj += dy[dir];
+					usedEdgeFlag[curi][curj][(dir+2)%4] = true;
+				};
+				assert(curi == x); assert(curj == y);
+				
+				List<BNode> tmp = enumerate(i, j, next, usedEdgeFlag);
+				
+				curi = i;
+				curj = j;
+				while(preDirection[curi][curj] != ROOT) {
+					int dir = preDirection[curi][curj];
+					assert(usedEdgeFlag[curi][curj][dir]);
+					usedEdgeFlag[curi][curj][dir] = false;
+					curi += dx[dir];
+					curj += dy[dir];
+					assert(usedEdgeFlag[curi][curj][(dir+2)%4]);
+					usedEdgeFlag[curi][curj][(dir+2)%4] = false;
+				}
+				
+				if(tmp.size() > res.size()) {
+					List<BNode> a = tmp;
+					tmp = res;
+					res = a;
+				}
+				res.addAll(tmp);
+			}
+		}
+//		System.out.println(res.size());
+		return res;
 	}
 	
 	public int eval() {
 		// 評価値を返す
-		return -1;
+		return eval;
 	}
 	
-	public List<BNode> generateNext() {
+	public List<BNode> generateNextFirst(Trie dictionary) {
+		Node node = dictionary.getRoot().getNextNode(field[x][y]);
+		if(node == null) {
+			return new ArrayList<BNode>();
+		}
+		return enumerate(x, y, node,usedFlag);
+	}
+	
+	public List<BNode> generateNext(Trie dictionary) {
 		// 次のステップのノードを返す
-		List<BNode> ret = new ArrayList<BNode>();
-		// hogehoge
-		return ret;
+		int[][] preDirection = bfs(usedFlag, x, y);
+		List<BNode> res = new ArrayList<BNode>();
+		
+		for(int i = 0; i < height; i++) {
+			for(int j = 0; j < width; j++) {
+				if(i == x && j == y) continue;
+				if(field[i][j] == NONE || preDirection[i][j] == NONE) continue;
+				Node next = dictionary.getRoot().getNextNode(field[i][j]);
+				if(next == null) continue;
+					
+				int curi = i, curj = j;
+				while(preDirection[curi][curj] != ROOT) {
+					int dir = preDirection[curi][curj];
+					
+					assert(!usedFlag[curi][curj][dir]);
+					usedFlag[curi][curj][dir] = true;
+					assert(!usedFlag[curi+dx[dir]][curj+dy[dir]][(dir+2)%4]);
+					curi += dx[dir];
+					curj += dy[dir];
+					usedFlag[curi][curj][(dir+2)%4] = true;
+				}
+				assert(curi == x); assert(curj == y);
+				
+				List<BNode> list = enumerate(i, j, next, usedFlag);
+				
+				curi = i;
+				curj = j;
+				while(preDirection[curi][curj] != ROOT) {
+					int dir = preDirection[curi][curj];
+					assert(usedFlag[curi][curj][dir]);
+					usedFlag[curi][curj][dir] = false;
+					curi += dx[dir];
+					curj += dy[dir];
+					assert(usedFlag[curi][curj][(dir+2)%4]);
+					usedFlag[curi][curj][(dir+2)%4] = false;
+				}
+					
+				res.addAll(list);
+			}
+		}
+		
+		return res;
+	}
+	
+	public boolean[][][] debug() {
+		return usedFlag;
 	}
 }
 
@@ -183,8 +344,8 @@ public class ZemiB {
 	
 	static final int dx[] = {-1, 0, 1, 0};
 	static final int dy[] = {0, -1, 0, 1};
-	final int height = 30;
-	final int width = 30;
+	final int height = 20;
+	final int width = 20;
 	int[][] field;
 	Trie dictionary;
 	final int NONE = -1;
@@ -205,30 +366,14 @@ public class ZemiB {
 	}
 
 	public void run(final String inputFileName, final String dictFileName) throws IOException{
-		dictionary = new Trie();
-		FileReader fr = new FileReader(dictFileName);
-		BufferedReader br = new BufferedReader(fr);
-		String line;
-		while ((line = br.readLine()) != null) {
-			String[] hoge = line.split(" ", 0);
-//			System.out.println(hoge[0]);
-			List<Integer> tmp = new ArrayList<Integer>();
-			for(int i = 0; i < hoge.length; i++) {
-				tmp.add(Integer.parseInt(hoge[i])-1);
-			}
-			dictionary.add(tmp);
-		}
-		dictionary.debug();
-		
-		br.close();
-		
-		
 		for(int i = 0; i < height; i++) {
 			Arrays.fill(field[i], NONE);
 		}
 		
-		fr = new FileReader(inputFileName);
-		br = new BufferedReader(fr);
+		Map<Integer, Integer> charCount = new HashMap<Integer, Integer>();
+		FileReader fr = new FileReader(inputFileName);
+		BufferedReader br = new BufferedReader(fr);
+		String line;
 		while((line = br.readLine()) != null) {
 			String[] tmp = line.split(" ", 0);
 			int c = Integer.parseInt(tmp[2]);
@@ -236,37 +381,79 @@ public class ZemiB {
 			int y = Integer.parseInt(tmp[1]);
 			c--; x--; y--;
 			field[x][y] = c;
+			Integer val = charCount.get(c);
+			if(val != null) {
+				charCount.put(c, val + 1);
+			} else {
+				charCount.put(c, 1);
+			}
 		}
 		br.close();
-		{
-			int sum = 0;
-			Set<Integer> s = new HashSet<Integer>();
-			for(int i = 0; i < height; i++) {
-				for(int j = 0; j < width; j++) {
-					if(field[i][j] == NONE) continue;
-					Node next = dictionary.getRoot().getNextNode(field[i][j]);
-					if(next == null) continue;
-					System.out.println("");
-					System.out.println("char : " + field[i][j]);
-					boolean[][][] usedEdgeFlag = new boolean[height][width][4];
-					for(boolean[][] a : usedEdgeFlag) {
-						for(boolean[] b : a) {
-							Arrays.fill(b, false);
-						}
-					}
-					List<Integer> list = enumerate(i, j, next, usedEdgeFlag);
-					s.addAll(list);
-					System.out.println(list.size());
-					sum += list.size();
-					System.out.println(s.size());
-//					sum += s.size();
+		
+		
+		dictionary = new Trie();
+		fr = new FileReader(dictFileName);
+		br = new BufferedReader(fr);
+//		String line;
+		while ((line = br.readLine()) != null) {
+			String[] hoge = line.split(" ", 0);
+			List<Integer> tmp = new ArrayList<Integer>();
+			Map<Integer, Integer> countTmp = new HashMap<Integer, Integer>();
+			for(int i = 0; i < hoge.length; i++) {
+				int c = Integer.parseInt(hoge[i])-1;
+				Integer val = countTmp.get(c);
+				if(val != null) {
+					countTmp.put(c, val + 1);
+				} else {
+					countTmp.put(c, 1);
+				}
+				tmp.add(c);
+			}
+			boolean addFlag = true;
+			for(Map.Entry<Integer, Integer> e : countTmp.entrySet()) {
+				Integer all = charCount.get(e.getKey());
+				if(all == null || all < e.getValue()) {
+					addFlag = false;
 				}
 			}
-			System.out.println("sum : " + sum);
-			System.out.println("set : " + s.size());
+			if(addFlag) dictionary.add(tmp);
 		}
-//		BNode answer = search();
-		// anser.printLog();
+		dictionary.debug();
+		br.close();
+		
+		for(Map.Entry<Integer, Integer> e : charCount.entrySet()) {
+			System.out.println(e.getKey() + ", " + e.getValue());
+		}
+		BNode ans = search();
+		print(ans.debug());
+		System.out.println(ans.eval());
+		
+//		{
+//			int sum = 0;
+//			Set<Integer> s = new HashSet<Integer>();
+//			for(int i = 0; i < height; i++) {
+//				for(int j = 0; j < width; j++) {
+//					if(field[i][j] == NONE) continue;
+//					Node next = dictionary.getRoot().getNextNode(field[i][j]);
+//					if(next == null) continue;
+//					System.out.println("");
+//					System.out.println("char : " + field[i][j]);
+//					boolean[][][] usedEdgeFlag = new boolean[height][width][4];
+//					for(boolean[][] a : usedEdgeFlag) {
+//						for(boolean[] b : a) {
+//							Arrays.fill(b, false);
+//						}
+//					}
+//					List<Integer> list = enumerate(i, j, next, usedEdgeFlag);
+//					s.addAll(list);
+//					System.out.println(list.size());
+//					sum += list.size();
+//					System.out.println(s.size());
+//				}
+//			}
+//			System.out.println("sum : " + sum);
+//			System.out.println("set : " + s.size());
+//		}
 	}
 	
 	private boolean checkRange(int x, int y) {
@@ -310,7 +497,6 @@ public class ZemiB {
 		}
 	}
 	
-//	boolean[][][] usedEdgeFlag;
 	private List<Integer> enumerate(int x, int y, Node current, boolean[][][] usedEdgeFlag) {
 		// まずBFS
 //		System.out.println("x : " + x);
@@ -412,15 +598,36 @@ public class ZemiB {
 	}
 	
 	private BNode search() {
-		final int BeamWidth = 100;
+		final int BeamWidth = 300;
 		List<BNode> nodes = new ArrayList<BNode>();
-		nodes.add(new BNode());
+		for(int i = 0; i < height; i++) {
+			for(int j = 0; j < width; j++) {
+				if(field[i][j] == NONE) continue;
+				nodes.addAll((new BNode(field, i, j)).generateNextFirst(dictionary));
+				System.out.println(nodes.size());
+				Collections.sort(nodes, new BNodeComparator());
+				while(nodes.size() > BeamWidth) {
+					nodes.remove(nodes.size()-1);
+				}
+			}
+		}
+		Collections.sort(nodes, new BNodeComparator());
+		while(nodes.size() > BeamWidth) {
+			nodes.remove(nodes.size()-1);
+		}
+		
 		BNode res = null;
 		do {
 			List<BNode> nextNodes = new ArrayList<BNode>();
 			for(BNode node : nodes) {
-				nextNodes.addAll(node.generateNext());
+				nextNodes.addAll(node.generateNext(dictionary));
+				System.out.println(nextNodes.size());
+				Collections.sort(nextNodes, new BNodeComparator());
+				while(nextNodes.size() > BeamWidth) {
+					nextNodes.remove(nextNodes.size()-1);
+				}
 			}
+			System.out.println("size : " + nextNodes.size());
 			if(nextNodes.isEmpty()) break;
 			// 大きい順にソート
 			Collections.sort(nextNodes, new BNodeComparator());
@@ -436,41 +643,10 @@ public class ZemiB {
 					res = nodes.get(0);
 				}
 			}
-		}while(true);
+			System.out.println(res.debug());
+		} while(true);
 		return res;
 	}
 
-
-	private int[][] createTopology(int x_max,int y_max) {
-
-		int allnode=x_max*y_max;
-
-		int[][] toporogy = new int[allnode][allnode];
-
-		for(int i=0;i<x_max;i++) {
-			for(int j=0;j<y_max;j++) {
-
-				if(i!=0) {
-					toporogy[i+x_max*j][i-1+x_max*j]=1;
-				}
-
-				if(i!=(x_max-1)) {
-					toporogy[i+x_max*j][i+1+x_max*j]=1;
-				}
-
-				if(j!=0) {
-					toporogy[i+x_max*j][i+x_max*(j-1)]=1;
-				}
-
-				if(j!=(y_max-1)) {
-					toporogy[i+x_max*j][i+x_max*(j+1)]=1;
-				}
-
-			}
-		}
-
-
-		return toporogy;
-	}
 
 }
