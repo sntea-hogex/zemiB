@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -121,7 +122,9 @@ class BNode {
 	boolean[][][] usedFlag;
 	int[][] field;
 	int eval = 0;
-	
+	int startX;
+	int startY;
+	ArrayDeque<Byte> log;
 	
 	
 	public BNode(int[][] field, int x, int y) {
@@ -135,10 +138,17 @@ class BNode {
 		this.field = field;
 		this.x = x;
 		this.y = y;
+		this.startY = x;
+		this.startY = y;
+		this.log = new ArrayDeque<Byte>();
 	}
 	
-	public BNode(int[][] field, int eval, int x, int y, boolean[][][] usedFlag) {
+	public BNode(int[][] field, int eval, int x, int y, int startX, int startY, ArrayDeque<Byte> log, boolean[][][] usedFlag) {
 		this.usedFlag = new boolean[height][width][4];
+		this.log = log.clone();
+		this.startX = startX;
+		this.startY = startY;
+		
 		for(int i = 0; i < height; i++) {
 			for(int j = 0; j < width; j++) {
 				this.usedFlag[i][j] = usedFlag[i][j].clone();
@@ -155,13 +165,13 @@ class BNode {
 	}
 	
 	static final int ROOT = 100;
-	private int[][] bfs(boolean[][][] usedEdgeFlag, int x, int y) {
+	private byte[][] bfs(boolean[][][] usedEdgeFlag, int x, int y) {
 		Queue<Point> qu = new ArrayDeque<Point>();
 		qu.add(new Point(x, y));
 		// 前にどの方向からきたのかをメモっておく
-		int[][] preDirection = new int[height][width];
-		for(int[] a : preDirection) {
-			Arrays.fill(a, NONE);
+		byte[][] preDirection = new byte[height][width];
+		for(byte[] a : preDirection) {
+			Arrays.fill(a, (byte)NONE);
 		}
 		preDirection[x][y] = ROOT;
 		while(!qu.isEmpty()) {
@@ -176,7 +186,7 @@ class BNode {
 				if(!checkRange(nx, ny) || preDirection[nx][ny] != NONE){
 					continue;
 				}
-				preDirection[nx][ny] = (k+2)%4;
+				preDirection[nx][ny] = (byte) ((k+2)%4);
 				if(field[nx][ny] == NONE) {
 					qu.add(new Point(nx, ny));
 				}
@@ -187,13 +197,13 @@ class BNode {
 	
 	private List<BNode> enumerate(int x, int y, Node current, boolean[][][] usedEdgeFlag) {
 		// まずBFS
-		int[][] preDirection = bfs(usedEdgeFlag, x, y);
+		byte[][] preDirection = bfs(usedEdgeFlag, x, y);
 		
 		// そして次のノードを決める
 		List<BNode> res = new ArrayList<BNode>();
 		if(current.isEnd()) {
 			int length = current.getLen();
-			res.add(new BNode(field, eval + length + length*length, x, y, usedFlag));
+			res.add(new BNode(field, eval + length + length*length, x, y, startX, startY, log, usedFlag));
 		}
 		for(int i = 0; i < height; i++) {
 			for(int j = 0; j < width; j++) {
@@ -253,9 +263,13 @@ class BNode {
 		return enumerate(x, y, node,usedFlag);
 	}
 	
+	public ArrayDeque<Byte> getLog() {
+		return log;
+	}
+	
 	public List<BNode> generateNext(Trie dictionary) {
 		// 次のステップのノードを返す
-		int[][] preDirection = bfs(usedFlag, x, y);
+		byte[][] preDirection = bfs(usedFlag, x, y);
 		List<BNode> res = new ArrayList<BNode>();
 		
 		for(int i = 0; i < height; i++) {
@@ -264,10 +278,12 @@ class BNode {
 				if(field[i][j] == NONE || preDirection[i][j] == NONE) continue;
 				Node next = dictionary.getRoot().getNextNode(field[i][j]);
 				if(next == null) continue;
-					
+				
 				int curi = i, curj = j;
+				List<Byte> logTmp = new ArrayList<Byte>();
 				while(preDirection[curi][curj] != ROOT) {
 					int dir = preDirection[curi][curj];
+					logTmp.add((byte)dir);
 					
 					assert(!usedFlag[curi][curj][dir]);
 					usedFlag[curi][curj][dir] = true;
@@ -278,8 +294,16 @@ class BNode {
 				}
 				assert(curi == x); assert(curj == y);
 				
+				
+				for(Byte e : logTmp) {
+					log.add(e);
+				}
+				
 				List<BNode> list = enumerate(i, j, next, usedFlag);
 				
+				for(int _ = 0; _ < logTmp.size(); _++) {
+					log.pop();
+				}
 				curi = i;
 				curj = j;
 				while(preDirection[curi][curj] != ROOT) {
@@ -645,6 +669,9 @@ public class ZemiB {
 			}
 			System.out.println(res.debug());
 		} while(true);
+		for(Byte e : res.getLog()) {
+			System.out.println("log: "+e);
+		}
 		return res;
 	}
 
