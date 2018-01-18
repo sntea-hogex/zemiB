@@ -138,7 +138,7 @@ class BNode {
 		this.field = field;
 		this.x = x;
 		this.y = y;
-		this.startY = x;
+		this.startX = x;
 		this.startY = y;
 		this.log = new ArrayDeque<Byte>();
 	}
@@ -203,6 +203,9 @@ class BNode {
 		List<BNode> res = new ArrayList<BNode>();
 		if(current.isEnd()) {
 			int length = current.getLen();
+//			System.out.println("lengyh: " + length);
+//			printPath();
+//			printUsedEdge();
 			res.add(new BNode(field, eval + length + length*length, x, y, startX, startY, log, usedFlag));
 		}
 		for(int i = 0; i < height; i++) {
@@ -212,6 +215,7 @@ class BNode {
 				if(next == null) continue;
 
 				int curi = i, curj = j;
+				List<Byte> logTmp = new ArrayList<Byte>();
 				while(preDirection[curi][curj] != ROOT) {
 					int dir = preDirection[curi][curj];
 					
@@ -221,10 +225,24 @@ class BNode {
 					curi += dx[dir];
 					curj += dy[dir];
 					usedEdgeFlag[curi][curj][(dir+2)%4] = true;
-				};
+					logTmp.add((byte)((dir+2)%4));
+				}
 				assert(curi == x); assert(curj == y);
 				
+//				printPath();
+				int unko = log.size();
+				for(int ind = logTmp.size()-1; ind >= 0; ind--) {
+					log.offerFirst(logTmp.get(ind));
+				}
+//				printPath();
+				
 				List<BNode> tmp = enumerate(i, j, next, usedEdgeFlag);
+				
+				for(int a = 0; a < logTmp.size(); a++) {
+					log.pollFirst();
+				}
+				assert(unko == log.size());
+				
 				
 				curi = i;
 				curj = j;
@@ -263,7 +281,7 @@ class BNode {
 		return enumerate(x, y, node,usedFlag);
 	}
 	
-	public ArrayDeque<Byte> getLog() {
+	public Deque<Byte> getLog() {
 		return log;
 	}
 	
@@ -283,7 +301,6 @@ class BNode {
 				List<Byte> logTmp = new ArrayList<Byte>();
 				while(preDirection[curi][curj] != ROOT) {
 					int dir = preDirection[curi][curj];
-					logTmp.add((byte)dir);
 					
 					assert(!usedFlag[curi][curj][dir]);
 					usedFlag[curi][curj][dir] = true;
@@ -291,19 +308,23 @@ class BNode {
 					curi += dx[dir];
 					curj += dy[dir];
 					usedFlag[curi][curj][(dir+2)%4] = true;
+					logTmp.add((byte)((dir+2)%4));
 				}
 				assert(curi == x); assert(curj == y);
 				
-				
-				for(Byte e : logTmp) {
-					log.add(e);
+				int unko = log.size();
+				for(int ind = logTmp.size()-1; ind >= 0; ind--) {
+					log.offerFirst(logTmp.get(ind));
 				}
+				
 				
 				List<BNode> list = enumerate(i, j, next, usedFlag);
 				
-				for(int _ = 0; _ < logTmp.size(); _++) {
-					log.pop();
+				for(int tmp = 0; tmp < logTmp.size(); tmp++) {
+					log.pollFirst();
 				}
+				assert(unko == log.size());
+				
 				curi = i;
 				curj = j;
 				while(preDirection[curi][curj] != ROOT) {
@@ -323,8 +344,60 @@ class BNode {
 		return res;
 	}
 	
+	public Point getStart() {
+		return new Point(startX, startY);
+	}
+	
 	public boolean[][][] debug() {
 		return usedFlag;
+	}
+	
+	public void printPath() {
+		Point start = getStart();
+		System.out.println("(sx, sy): "+ start.getX() + ", " + start.getY());
+		int x = start.getX();
+		int y = start.getY();
+//		ArrayDeque<Byte> tmp = log.clone();
+//		while(!tmp.isEmpty()) {
+//			Byte e = tmp.remove();
+//			x += dx[e];
+//			y += dy[e];
+//			System.out.println(e);
+//			System.out.println("(x, y): "+ x + ", " + y);
+//		}
+		ArrayDeque<Byte> hoge = log.clone();
+		while(!hoge.isEmpty()) {
+			Byte e = hoge.pollLast();
+			x += dx[e];
+			y += dy[e];
+			System.out.println("dir: " + e);
+			System.out.println("(x, y): "+ x + ", " + y);
+		}
+//		for(Byte e : log) {
+//			x += dx[e];
+//			y += dy[e];
+//			System.out.println("dir: " + e);
+//			System.out.println("(x, y): "+ x + ", " + y);
+//		}
+	}
+	
+	private void printUsedEdge() {
+		int cnt = 0;
+		for(int i = 0; i < height; i++) {
+			for(int j = 0; j < width; j++) {
+				for(int k = 0; k < 4; k++) {
+					if(usedFlag[i][j][k]) {
+						System.out.print(1);
+						cnt += 1;
+					} else {
+						System.out.print(0);
+					}
+				}
+				System.out.print(" ");
+			}
+			System.out.println("");
+		}
+		System.out.println("sum: "+cnt);
 	}
 }
 
@@ -413,7 +486,14 @@ public class ZemiB {
 			}
 		}
 		br.close();
-		
+		System.out.println("FIELD---------");
+		for(int i = 0; i < height; i++) {
+			for(int j = 0; j < width; j++) {
+				System.out.print(field[i][j] + " ");
+			}
+			System.out.println("");
+		}
+		System.out.println("FIELD---------");
 		
 		dictionary = new Trie();
 		fr = new FileReader(dictFileName);
@@ -497,11 +577,13 @@ public class ZemiB {
 	}
 	
 	private void print(boolean[][][] usedEdgeFlag) {
+		int cnt = 0;
 		for(int i = 0; i < height; i++) {
 			for(int j = 0; j < width; j++) {
 				for(int k = 0; k < 4; k++) {
 					if(usedEdgeFlag[i][j][k]) {
 						System.out.print(1);
+						cnt += 1;
 					} else {
 						System.out.print(0);
 					}
@@ -510,6 +592,7 @@ public class ZemiB {
 			}
 			System.out.println("");
 		}
+		System.out.println("sum: "+cnt);
 	}
 	
 	private void print_dirs(int[][] hoge) {
@@ -574,22 +657,16 @@ public class ZemiB {
 				Node next = current.getNextNode(field[i][j]);
 				if(next == null) continue;
 				
-//				System.out.println("i : " + i);
-//				System.out.println("j : " + j);
-//				System.out.println(usedEdgeFlag);
 				int curi = i, curj = j;
 				while(preDirection[curi][curj] != ROOT) {
 					int dir = preDirection[curi][curj];
-//					System.out.println("curi : " + curi);
-//					System.out.println("curj : " + curj);
-//					System.out.println("dir : " + dir);
-//					System.out.println(curj+dy[dir]);
 					
 					assert(!usedEdgeFlag[curi][curj][dir]);
 					usedEdgeFlag[curi][curj][dir] = true;
 					assert(!usedEdgeFlag[curi+dx[dir]][curj+dy[dir]][(dir+2)%4]);
 					curi += dx[dir];
 					curj += dy[dir];
+					assert(curi > 0 && curj > 0);
 					usedEdgeFlag[curi][curj][(dir+2)%4] = true;
 				}
 //				check(usedEdgeFlag);
@@ -628,7 +705,7 @@ public class ZemiB {
 			for(int j = 0; j < width; j++) {
 				if(field[i][j] == NONE) continue;
 				nodes.addAll((new BNode(field, i, j)).generateNextFirst(dictionary));
-				System.out.println(nodes.size());
+				System.out.println("beamnode.size: " + nodes.size());
 				Collections.sort(nodes, new BNodeComparator());
 				while(nodes.size() > BeamWidth) {
 					nodes.remove(nodes.size()-1);
@@ -645,13 +722,13 @@ public class ZemiB {
 			List<BNode> nextNodes = new ArrayList<BNode>();
 			for(BNode node : nodes) {
 				nextNodes.addAll(node.generateNext(dictionary));
-				System.out.println(nextNodes.size());
+				System.out.println("nextnodes.size: " + nextNodes.size());
 				Collections.sort(nextNodes, new BNodeComparator());
 				while(nextNodes.size() > BeamWidth) {
 					nextNodes.remove(nextNodes.size()-1);
 				}
 			}
-			System.out.println("size : " + nextNodes.size());
+			System.out.println("beamsize : " + nextNodes.size());
 			if(nextNodes.isEmpty()) break;
 			// 大きい順にソート
 			Collections.sort(nextNodes, new BNodeComparator());
@@ -667,11 +744,10 @@ public class ZemiB {
 					res = nodes.get(0);
 				}
 			}
-			System.out.println(res.debug());
+			System.out.println("eval:" + res.eval());
 		} while(true);
-		for(Byte e : res.getLog()) {
-			System.out.println("log: "+e);
-		}
+		
+		res.printPath();
 		return res;
 	}
 
