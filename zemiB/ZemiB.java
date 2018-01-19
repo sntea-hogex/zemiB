@@ -118,10 +118,13 @@ class BNode {
 	static final int dy[] = {0, -1, 0, 1};
 	static final int NONE = -1;
 	// boolean[x][y][方向の番号] ですでに使った辺を管理する
-	int x, y;
 	boolean[][][] usedFlag;
+	// 現在の位置
+	int x, y;
 	int[][] field;
 	int eval = 0;
+	
+	// ログ
 	int startX;
 	int startY;
 	ArrayDeque<Byte> log;
@@ -285,11 +288,13 @@ class BNode {
 		return log;
 	}
 	
+	static final byte SEPARATOR = 101;
 	public List<BNode> generateNext(Trie dictionary) {
 		// 次のステップのノードを返す
 		byte[][] preDirection = bfs(usedFlag, x, y);
 		List<BNode> res = new ArrayList<BNode>();
 		
+		this.log.offerFirst(SEPARATOR);
 		for(int i = 0; i < height; i++) {
 			for(int j = 0; j < width; j++) {
 				if(i == x && j == y) continue;
@@ -340,6 +345,7 @@ class BNode {
 				res.addAll(list);
 			}
 		}
+		this.log.pollFirst();
 		
 		return res;
 	}
@@ -368,6 +374,7 @@ class BNode {
 		ArrayDeque<Byte> hoge = log.clone();
 		while(!hoge.isEmpty()) {
 			Byte e = hoge.pollLast();
+			if(e == SEPARATOR) continue;
 			x += dx[e];
 			y += dy[e];
 			System.out.println("dir: " + e);
@@ -379,6 +386,33 @@ class BNode {
 //			System.out.println("dir: " + e);
 //			System.out.println("(x, y): "+ x + ", " + y);
 //		}
+	}
+	
+	public void printAnswer(int[][] field) {
+		Point start = getStart();
+//		System.out.println("(sx, sy): "+ start.getX() + ", " + start.getY());
+		System.out.print((field[start.getX()][start.getY()]+1) + " ");
+		int x = start.getX();
+		int y = start.getY();
+		ArrayDeque<Byte> hoge = log.clone();
+		while(!hoge.isEmpty()) {
+			Byte e = hoge.pollLast();
+			if(e == SEPARATOR) {
+				System.out.println();
+				continue;
+			}
+			x += dx[e];
+			y += dy[e];
+//			System.out.println(field[x][y]);
+//			System.out.println(tmp);
+			if(field[x][y] != NONE){
+				int tmp = field[x][y]+1;
+//				System.out.println(field[x][y]);
+//				System.out.println(tmp);
+				System.out.print(tmp + " ");
+			}
+		}
+		System.out.println();
 	}
 	
 	private void printUsedEdge() {
@@ -523,6 +557,11 @@ public class ZemiB {
 			if(addFlag) dictionary.add(tmp);
 		}
 		dictionary.debug();
+		{
+			ArrayList<Integer> tmp = new ArrayList<>();
+			tmp.add(6);
+			System.out.println(dictionary.isContain(tmp));
+		}
 		br.close();
 		
 		for(Map.Entry<Integer, Integer> e : charCount.entrySet()) {
@@ -603,6 +642,7 @@ public class ZemiB {
 			System.out.println("");
 		}
 	}
+	
 	
 	private List<Integer> enumerate(int x, int y, Node current, boolean[][][] usedEdgeFlag) {
 		// まずBFS
@@ -698,9 +738,18 @@ public class ZemiB {
 		return res;
 	}
 	
+	
+	private void printNodes(List<BNode> nodes) {
+		for(BNode e : nodes) {
+			System.out.print(e.eval() + " ");
+		}
+		System.out.println("");
+	}
+	
 	private BNode search() {
 		final int BeamWidth = 300;
 		List<BNode> nodes = new ArrayList<BNode>();
+		// スタートを列挙
 		for(int i = 0; i < height; i++) {
 			for(int j = 0; j < width; j++) {
 				if(field[i][j] == NONE) continue;
@@ -716,19 +765,22 @@ public class ZemiB {
 		while(nodes.size() > BeamWidth) {
 			nodes.remove(nodes.size()-1);
 		}
+		printNodes(nodes);
 		
+		// 返り値
 		BNode res = null;
+		// 探索
 		do {
 			List<BNode> nextNodes = new ArrayList<BNode>();
 			for(BNode node : nodes) {
 				nextNodes.addAll(node.generateNext(dictionary));
-				System.out.println("nextnodes.size: " + nextNodes.size());
+//				System.out.println("nextnodes.size: " + nextNodes.size());
 				Collections.sort(nextNodes, new BNodeComparator());
 				while(nextNodes.size() > BeamWidth) {
 					nextNodes.remove(nextNodes.size()-1);
 				}
 			}
-			System.out.println("beamsize : " + nextNodes.size());
+//			System.out.println("beamsize : " + nextNodes.size());
 			if(nextNodes.isEmpty()) break;
 			// 大きい順にソート
 			Collections.sort(nextNodes, new BNodeComparator());
@@ -737,6 +789,7 @@ public class ZemiB {
 			for(int i = 0; i < BeamWidth && i < nextNodes.size(); i++) {
 				nodes.add(nextNodes.get(i));
 			}
+			printNodes(nodes);
 			if(res == null) {
 				res = nodes.get(0);
 			} else {
@@ -744,12 +797,14 @@ public class ZemiB {
 					res = nodes.get(0);
 				}
 			}
-			System.out.println("eval:" + res.eval());
+//			System.out.println("eval:" + res.eval());
 		} while(true);
 		
 		res.printPath();
+		res.printAnswer(field);
 		return res;
 	}
 
-
 }
+
+
